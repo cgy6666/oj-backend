@@ -14,24 +14,23 @@ module.exports = async (req, res) => {
     .from('submissions')
     .insert({ problem_id, code, language_id, stdin, status: 'pending' })
     .select().single();
-  if (error) throw error;
+  if (error) return res.status(500).json({ error: error.message });
 
-  // 2. 调用 Judge0 API
-  const judgeRes = await axios.post(
-    'https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=false',
-    { source_code: code, language_id, stdin },
-    {
-      headers: {
-        'X-RapidAPI-Key': process.env.JUDGE0_API_KEY,
-        'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
-      }
-    }
-  );
+  // 2. 调用Judge0官方免费API，无需RapidAPI、无需注册
+  try {
+    const judgeRes = await axios.post(
+      'https://ce.judge0.com/submissions?base64_encoded=false&wait=false',
+      { source_code: code, language_id, stdin },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
 
-  // 3. 更新 Judge0 Token
-  await supabase.from('submissions')
-    .update({ judge0_token: judgeRes.data.token, status: 'judging' })
-    .eq('id', submission.id);
+    // 3. 更新Judge0 Token
+    await supabase.from('submissions')
+      .update({ judge0_token: judgeRes.data.token, status: 'judging' })
+      .eq('id', submission.id);
 
-  res.status(200).json({ submission_id: submission.id, token: judgeRes.data.token });
+    res.status(200).json({ submission_id: submission.id, token: judgeRes.data.token });
+  } catch (e) {
+    res.status(500).json({ error: '评测API调用失败：' + e.message });
+  }
 };
